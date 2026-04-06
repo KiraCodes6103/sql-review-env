@@ -1,0 +1,97 @@
+spec_version: 1
+name: sql_review_env
+type: space
+runtime: fastapi
+app: server.app:app
+port: 8000
+
+description: >
+  An OpenEnv environment where an AI agent receives broken, slow, or insecure
+  SQL queries and must iteratively improve them across three tasks of increasing
+  difficulty: syntax fixing, query optimization, and security auditing.
+
+author: "SQL Review Env"
+tags:
+  - openenv
+  - sql
+  - code-review
+  - security
+  - optimization
+  - real-world
+
+tasks:
+  - name: fix_syntax
+    difficulty: easy
+    max_steps: 6
+    description: >
+      Fix a SQL query containing multiple syntax errors (misspelled keywords,
+      wrong table name, broken JOIN condition, missing BY clause). The agent
+      must produce a query that executes correctly and returns the expected rows.
+
+  - name: optimize_query
+    difficulty: medium
+    max_steps: 8
+    description: >
+      Rewrite a functionally correct but highly inefficient query. The original
+      uses correlated subqueries and wraps indexed columns in UPPER(), causing
+      full-table scans. The agent should use a CTE, proper JOIN, and avoid
+      function-wrapped column comparisons.
+
+  - name: security_audit
+    difficulty: hard
+    max_steps: 10
+    description: >
+      Identify and fix multiple security vulnerabilities in a web-facing SQL
+      query: SQL injection via string concatenation, data leakage (role column
+      exposed), and missing LIMIT clause. The agent must rewrite it to be
+      injection-safe using parameterized placeholders, hide sensitive columns,
+      and cap result set size.
+
+observation_space:
+  type: object
+  fields:
+    task_name: string
+    task_description: string
+    schema_ddl: string
+    original_query: string
+    current_query: string
+    execution_feedback: string
+    review_feedback: "array[string]"
+    step_number: integer
+    max_steps: integer
+    score_so_far: float
+    hints: "array[string]"
+    done: boolean
+    reward: float
+
+action_space:
+  type: object
+  fields:
+    revised_query:
+      type: string
+      description: "The improved SQL query (required)"
+    explanation:
+      type: string
+      description: "Agent's explanation of changes (optional, earns small reward bonus)"
+
+reward:
+  range: [0.0, 1.0]
+  type: continuous
+  description: >
+    Per-step reward based on weighted combination of:
+    - Syntax score: query executes without error (0.2–0.4)
+    - Correctness score: output matches expected row count and values (0.35–0.5)
+    - Quality score: anti-patterns removed, good SQL idioms used (0.05–0.2)
+    - Security score (hard task only): injection fixed, no data leakage, LIMIT added (0.65)
+    - Explanation bonus: small bonus for clear explanation (0.02–0.03)
+    - Penalties: regressions, anti-patterns remaining, data leakage (-0.1 to -0.35)
+
+docker:
+  image: sql-review-env
+  port: 8000
+  build: "docker build -t sql-review-env ."
+  run: "docker run -p 8000:8000 sql-review-env"
+
+huggingface:
+  space: true
+  sdk: docker
