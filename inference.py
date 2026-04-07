@@ -5,11 +5,12 @@ Inference Script — SQL Review Environment
 Runs an LLM agent against all three tasks and prints OpenEnv-compliant
 structured logs in the required [START] / [STEP] / [END] format.
 
-Environment variables:
-    API_BASE_URL        LLM endpoint  (default: HuggingFace router)
+Environment variables (injected by hackathon validator):
+    API_BASE_URL        LiteLLM proxy endpoint  — REQUIRED, no default
+    API_KEY             Proxy API key            — REQUIRED, no default
     MODEL_NAME          Model identifier (default: Qwen/Qwen2.5-72B-Instruct)
-    HF_TOKEN            HuggingFace / API key  (NO default — must be set)
     LOCAL_IMAGE_NAME    Docker image name (optional — if using from_docker_image)
+    HF_TOKEN            Alias for API_KEY (accepted as fallback locally)
 
 Output format (strictly required by hackathon validators):
     [START] task=<task> env=sql-review-env model=<model>
@@ -29,54 +30,50 @@ from typing import List, Optional
 from openai import OpenAI
 
 # ---------------------------------------------------------------------------
-# Configuration — read from environment variables
-# Defaults only for API_BASE_URL and MODEL_NAME, NOT for HF_TOKEN
+# Configuration
+#
+# IMPORTANT: API_BASE_URL and API_KEY are read from the environment with NO
+# default fallback. The hackathon validator injects these at runtime and
+# checks that all LLM calls go through their LiteLLM proxy. Any hardcoded
+# URL or key will cause the "No API calls made through our proxy" failure.
 # ---------------------------------------------------------------------------
 
-API_BASE_URL: str = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+API_BASE_URL: str = os.environ["API_BASE_URL"]          # REQUIRED — no default
+API_KEY: str = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN", "")  # validator injects API_KEY
 MODEL_NAME: str = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN: Optional[str] = os.getenv("HF_TOKEN")          # NO default — must be set externally
-LOCAL_IMAGE_NAME: Optional[str] = os.getenv("LOCAL_IMAGE_NAME")  # optional docker image override
-
-# The API key used for LLM calls is the HF_TOKEN
-API_KEY: str = HF_TOKEN or "no-key"
+LOCAL_IMAGE_NAME: Optional[str] = os.getenv("LOCAL_IMAGE_NAME")
 
 BENCHMARK = "sql-review-env"
 TEMPERATURE = 0.2
 MAX_TOKENS = 1024
-SUCCESS_THRESHOLD = 0.7   # score >= 0.7 counts as "success"
+SUCCESS_THRESHOLD = 0.7
 
 ALL_TASKS = ["fix_syntax", "optimize_query", "security_audit"]
+
+# ---------------------------------------------------------------------------
+# Path setup — must happen before local imports
+# ---------------------------------------------------------------------------
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_PARENT = os.path.dirname(_HERE)
+for _p in [_HERE, _PARENT]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # OpenEnv client imports
 # ---------------------------------------------------------------------------
 
-# Ensure this file's directory is on sys.path so sibling modules are importable
-# when inference.py is run directly: python inference.py
-_HERE = os.path.dirname(os.path.abspath(__file__))
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
-
-# Also insert parent directory so the package import works if installed
-_PARENT = os.path.dirname(_HERE)
-if _PARENT not in sys.path:
-    sys.path.insert(0, _PARENT)
-
-# Import the OpenEnv client and action model.
-# Three fallback paths handle: installed package, direct file, or package mode.
 try:
-    # If the package is installed (e.g. inside Docker or via pip install .)
     from sql_review_env import SqlReviewEnv, SqlReviewAction
 except ImportError:
     try:
-        # Running directly from inside the project folder: python inference.py
         from client import SqlReviewEnv
         from models import SqlReviewAction
     except ImportError as _e:
         raise ImportError(
-            "Cannot import SqlReviewEnv. Make sure you are running from inside "
-            "the sql_review_env folder and openenv-core is installed:\n"
+            "Cannot import SqlReviewEnv. Run from inside the project folder "
+            "with openenv-core installed:\n"
             "  pip install 'openenv-core[core]>=0.2.2'\n"
             f"Original error: {_e}"
         ) from _e
@@ -171,11 +168,12 @@ Respond with JSON only.
 
 
 # ---------------------------------------------------------------------------
-# LLM call — uses OpenAI client with API_BASE_URL / MODEL_NAME / HF_TOKEN
+# LLM call — ALL calls go through the OpenAI client initialised with
+# API_BASE_URL and API_KEY from environment. No other provider is used.
 # ---------------------------------------------------------------------------
 
 def get_model_action(client: OpenAI, obs) -> SqlReviewAction:
-    """Call the LLM; return a SqlReviewAction."""
+    """Call the LLM via the proxy; return a SqlReviewAction."""
     user_prompt = build_user_prompt(obs)
     try:
         completion = client.chat.completions.create(
@@ -200,7 +198,7 @@ def get_model_action(client: OpenAI, obs) -> SqlReviewAction:
 
 
 # ---------------------------------------------------------------------------
-# Async episode runner — matches sample inference script pattern exactly
+# Async episode runner
 # ---------------------------------------------------------------------------
 
 async def run_episode(client: OpenAI, task_name: str,
@@ -212,14 +210,13 @@ async def run_episode(client: OpenAI, task_name: str,
 
     log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
 
-    # Connect: use from_docker_image if LOCAL_IMAGE_NAME is set, else HTTP
     if LOCAL_IMAGE_NAME:
         env = await SqlReviewEnv.from_docker_image(LOCAL_IMAGE_NAME)
     else:
         env = SqlReviewEnv(base_url=base_url)
 
     try:
-        result = await env.reset()          # OpenEnv .reset()
+        result = await env.reset()
         obs = result.observation
 
         for step in range(1, obs.max_steps + 1):
@@ -228,7 +225,7 @@ async def run_episode(client: OpenAI, task_name: str,
 
             action = get_model_action(client, obs)
 
-            result = await env.step(action)  # OpenEnv .step()
+            result = await env.step(action)
             obs = result.observation
             reward = result.reward or 0.0
             done = result.done
@@ -268,7 +265,12 @@ async def run_episode(client: OpenAI, task_name: str,
 # ---------------------------------------------------------------------------
 
 async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    # OpenAI client MUST be initialised with the injected API_BASE_URL and
+    # API_KEY so all LLM traffic goes through the hackathon's LiteLLM proxy.
+    client = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=API_KEY,
+    )
 
     single_task = os.getenv("SQL_REVIEW_TASK")
     tasks_to_run = [single_task] if single_task else ALL_TASKS
