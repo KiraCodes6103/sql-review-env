@@ -1,3 +1,12 @@
+---
+title: SQL Review Env
+emoji: 🧠
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_file: server/app.py
+pinned: false
+---
 # SQL Review Env — OpenEnv Environment
 
 An **OpenEnv-compliant** environment where an AI agent receives broken, slow, or insecure SQL queries and must iteratively improve them across three tasks of increasing difficulty.
