@@ -7,13 +7,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git curl && \
     rm -rf /var/lib/apt/lists/*
 
-ARG BUILD_MODE=standalone
-ARG ENV_NAME=sql_review_env
-
 COPY . /app/env
 WORKDIR /app/env
 
-# Ensure uv is available
+# Install uv if missing
 RUN if ! command -v uv >/dev/null 2>&1; then \
         curl -LsSf https://astral.sh/uv/install.sh | sh && \
         mv /root/.local/bin/uv /usr/local/bin/uv && \
@@ -22,20 +19,13 @@ RUN if ! command -v uv >/dev/null 2>&1; then \
 
 # Install dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
-    if [ -f uv.lock ]; then \
-        uv sync --frozen --no-install-project --no-editable; \
-    else \
-        uv sync --no-install-project --no-editable; \
-    fi
+    uv sync --no-install-project --no-editable
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    if [ -f uv.lock ]; then \
-        uv sync --frozen --no-editable; \
-    else \
-        uv sync --no-editable; \
-    fi
+    uv sync --no-editable
 
-# ── Runtime ──────────────────────────────────────────────────────────────────
+# -------------------------------------------------------------------
+
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
@@ -48,5 +38,5 @@ ENV PYTHONPATH="/app/env:$PYTHONPATH"
 
 EXPOSE 7860
 
-
-CMD ["sh", "-c", "cd /app/env && python inference.py"]
+# ✅ CRITICAL FIX: Run server (NOT inference)
+CMD ["python", "-m", "server.app"]
