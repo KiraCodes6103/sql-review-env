@@ -202,7 +202,7 @@ def get_model_action(client: OpenAI, obs) -> SqlReviewAction:
 # ---------------------------------------------------------------------------
 
 async def run_episode(client: OpenAI, task_name: str,
-                      base_url: str = "http://localhost:7860") -> float:
+                      base_url: str = "http://localhost:8000") -> float:
     rewards: List[float] = []
     steps_taken = 0
     score = 0.0
@@ -275,7 +275,7 @@ async def main() -> None:
     single_task = os.getenv("SQL_REVIEW_TASK")
     tasks_to_run = [single_task] if single_task else ALL_TASKS
 
-    server_url = os.getenv("ENV_SERVER_URL", "http://localhost:7860")
+    server_url = os.getenv("ENV_SERVER_URL", "http://localhost:8000")
 
     all_scores: List[float] = []
     for task_name in tasks_to_run:
