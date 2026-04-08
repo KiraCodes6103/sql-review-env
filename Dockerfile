@@ -48,7 +48,5 @@ ENV PYTHONPATH="/app/env:$PYTHONPATH"
 
 EXPOSE 7860
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:7860/health || exit 1
 
-CMD ["sh", "-c", "cd /app/env && uvicorn server.app:app --host 0.0.0.0 --port 7860"]
+CMD ["sh", "-c", "cd /app/env && python inference.py"]
