@@ -39,4 +39,4 @@ ENV PYTHONPATH="/app/env:$PYTHONPATH"
 EXPOSE 7860
 
 # ✅ CRITICAL FIX: Run server (NOT inference)
-CMD ["python", "-m", "server.app"]
+CMD ["sh", "-c", "python -m server.app & sleep 5 && python /app/env/inference.py"]
