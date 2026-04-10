@@ -264,7 +264,7 @@ def grade_easy(revised_query: str, explanation: str, task: dict,
     if step > max_steps - 2 and correctness_score < 0.3:
         penalty += 0.05
 
-    total = min(1.0, max(0.0, syntax_score + correctness_score + quality_score + explanation_score - penalty))
+    total = min(0.999, max(0.0001, syntax_score + correctness_score + quality_score + explanation_score - penalty))
     return {
         "total": total,
         "syntax_score": syntax_score,
@@ -326,7 +326,7 @@ def grade_medium(revised_query: str, explanation: str, task: dict,
     if len(explanation.strip()) > 20:
         explanation_score = 0.02
 
-    total = min(1.0, max(0.0, syntax_score + correctness_score + quality_score + explanation_score - penalty))
+    total = min(0.999, max(0.0001, syntax_score + correctness_score + quality_score + explanation_score - penalty))
     return {
         "total": total,
         "syntax_score": syntax_score,
@@ -385,7 +385,7 @@ def grade_hard(revised_query: str, explanation: str, task: dict,
     if len(explanation.strip()) > 30:
         explanation_score = 0.03
 
-    total = min(1.0, max(0.0, security_score + correctness_score + quality_score + explanation_score - penalty))
+    total = min(0.999, max(0.0001, security_score + correctness_score + quality_score + explanation_score - penalty))
     return {
         "total": total,
         "syntax_score": 0.0,

@@ -174,7 +174,7 @@ async def run_episode(client: OpenAI, task_name: str) -> float:
                 break
 
         score = getattr(obs, "score_so_far", sum(rewards))
-        score = min(max(score, 0.0), 1.0)
+        score = min(max(score, 0.0001), 0.9999)
         success = score >= SUCCESS_THRESHOLD
 
     except Exception as e:
