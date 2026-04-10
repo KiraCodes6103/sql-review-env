@@ -10,12 +10,16 @@ from typing import List, Optional
 from openai import OpenAI
 
 # ---------------------------------------------------------------------------
-# REQUIRED ENV VARIABLES
+# REQUIRED ENV VARIABLES — injected by the evaluator
 # ---------------------------------------------------------------------------
 
 API_BASE_URL: str = os.environ["API_BASE_URL"]
-API_KEY: str = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN", "")
+API_KEY: str = os.environ["API_KEY"]          # Must use the injected key — no fallback
 MODEL_NAME: str = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+
+# Force the OpenAI SDK to use the injected key (prevents SDK from reading
+# OPENAI_API_KEY from the environment and bypassing the proxy)
+os.environ["OPENAI_API_KEY"] = API_KEY
 
 BENCHMARK = "sql-review-env"
 TEMPERATURE = 0.2
@@ -105,7 +109,7 @@ HINTS:
 """).strip()
 
 # ---------------------------------------------------------------------------
-# LLM call
+# LLM call — uses the evaluator-injected proxy
 # ---------------------------------------------------------------------------
 
 def get_model_action(client: OpenAI, obs) -> SqlReviewAction:
@@ -147,7 +151,6 @@ async def run_episode(client: OpenAI, task_name: str) -> float:
     env = SqlReviewEnv(base_url=server_url)
 
     try:
-        # ✅ IMPORTANT FIX
         result = await env.reset(task_name=task_name)
         obs = result.observation
 
@@ -194,7 +197,15 @@ async def run_episode(client: OpenAI, task_name: str) -> float:
 # ---------------------------------------------------------------------------
 
 async def main():
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    # Initialize OpenAI client pointing at the evaluator's LiteLLM proxy
+    client = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=API_KEY,
+    )
+
+    print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
+    print(f"[DEBUG] API_KEY prefix={API_KEY[:8]}...", flush=True)
+    print(f"[DEBUG] MODEL_NAME={MODEL_NAME}", flush=True)
 
     tasks = os.getenv("SQL_REVIEW_TASK")
     tasks = [tasks] if tasks else ALL_TASKS

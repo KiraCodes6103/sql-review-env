@@ -33,10 +33,12 @@ WORKDIR /app
 COPY --from=builder /app/env/.venv /app/.venv
 COPY --from=builder /app/env /app/env
 
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="//app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/env:$PYTHONPATH"
 
 EXPOSE 7860
 
-# ✅ CRITICAL FIX: Run server (NOT inference)
-CMD ["sh", "-c", "python -m server.app & sleep 5 && python /app/env/inference.py && tail -f /dev/null"]
+# The HF Space only needs to serve the environment server.
+# The evaluator runs inference.py separately in its own container
+# with the injected API_BASE_URL and API_KEY env vars.
+CMD ["python", "-m", "server.app"]
